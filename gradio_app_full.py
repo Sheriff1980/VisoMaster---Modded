@@ -42,9 +42,15 @@ class MockMainWindow:
     def __init__(self):
         self.model_loading_signal = MockSignal()
         self.model_loaded_signal = MockSignal()
+
+        # Check if ONNX Runtime CUDA is available
+        import onnxruntime
+        available_providers = onnxruntime.get_available_providers()
+        use_cuda = 'CUDAExecutionProvider' in available_providers and torch.cuda.is_available()
+
         self.control = {
             'MaxDFMModelsSlider': 3,
-            'ExecutionProviderSelection': 'CUDA',
+            'ExecutionProviderSelection': 'CUDA' if use_cuda else 'CPU',
         }
         from app.helpers.miscellaneous import DFM_MODELS_DATA
         self.dfm_models_data = DFM_MODELS_DATA
@@ -78,8 +84,18 @@ class VisoMasterGradioFull:
     def __init__(self):
         print("Initializing VisoMaster Gradio (Full Version)...")
 
+        # Check ONNX Runtime providers
+        import onnxruntime
+        available_providers = onnxruntime.get_available_providers()
+        print(f"Available ONNX Runtime providers: {available_providers}")
+
+        # Determine device
+        use_cuda = 'CUDAExecutionProvider' in available_providers and torch.cuda.is_available()
+        device = 'cuda' if use_cuda else 'cpu'
+        print(f"Selected device: {device}")
+
         self.mock_main_window = MockMainWindow()
-        self.models_processor = ModelsProcessor(self.mock_main_window)
+        self.models_processor = ModelsProcessor(self.mock_main_window, device=device)
 
         self.face_detectors = FaceDetectors(self.models_processor)
         self.face_swappers = FaceSwappers(self.models_processor)
@@ -90,9 +106,32 @@ class VisoMasterGradioFull:
         print(f"Using device: {self.models_processor.device}")
         print("Initialization complete!")
 
+    def extract_video_frame(self, video_path: str, frame_number: int = 0) -> Optional[np.ndarray]:
+        """Extract a specific frame from a video file"""
+        try:
+            cap = cv2.VideoCapture(video_path)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+            # Clamp frame number
+            frame_number = max(0, min(frame_number, total_frames - 1))
+
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = cap.read()
+            cap.release()
+
+            if ret:
+                # Convert BGR to RGB
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                return frame
+            return None
+        except Exception as e:
+            print(f"Error extracting frame: {e}")
+            return None
+
     def process_image(
         self,
-        target_image: np.ndarray,
+        target_media,  # Can be image or video
+        frame_number: int,
         source_image: Optional[np.ndarray],
         # Face Swap parameters
         swap_enabled: bool,
@@ -130,10 +169,22 @@ class VisoMasterGradioFull:
         Full processing pipeline matching desktop app
         """
         try:
-            if target_image is None:
-                return None, "Please upload a target image"
+            if target_media is None:
+                return None, None, "Please upload a target image or video"
 
             status_msgs = []
+
+            # Handle video or image input
+            target_image = None
+            if isinstance(target_media, str):
+                # It's a video file path
+                status_msgs.append(f"Extracting frame {frame_number} from video...")
+                target_image = self.extract_video_frame(target_media, frame_number)
+                if target_image is None:
+                    return None, None, "Failed to extract frame from video"
+            else:
+                # It's a numpy array (image)
+                target_image = target_media
 
             # Convert to torch
             target_img = torch.from_numpy(target_image.astype('uint8')).to(self.models_processor.device)
@@ -155,7 +206,7 @@ class VisoMasterGradioFull:
             )
 
             if len(kpss_5) == 0:
-                return target_image, "No faces detected in target image"
+                return target_image, target_image, "No faces detected in target image"
 
             status_msgs.append(f"Found {len(kpss_5)} face(s)")
 
@@ -268,12 +319,14 @@ class VisoMasterGradioFull:
             # Convert back to numpy
             output_img = output_img.permute(1, 2, 0).cpu().numpy()
 
-            return output_img, "\n".join(status_msgs)
+            return target_image, output_img, "\n".join(status_msgs)
 
         except Exception as e:
             error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
             print(error_msg)
-            return target_image if target_image is not None else None, error_msg
+            return (target_image if target_image is not None else None,
+                    target_image if target_image is not None else None,
+                    error_msg)
 
     def create_interface(self):
         """Create comprehensive Gradio interface matching desktop app"""
@@ -286,15 +339,42 @@ class VisoMasterGradioFull:
                 with gr.Column(scale=1):
                     # INPUT SECTION
                     gr.Markdown("### 📤 Input")
-                    target_img = gr.Image(label="Target Image/Video Frame", type="numpy")
-                    source_img = gr.Image(label="Source Face (for swapping)", type="numpy")
 
-                    process_btn = gr.Button("🚀 Process Image", variant="primary", size="lg")
+                    # Target media (image OR video)
+                    target_media = gr.File(
+                        label="Target (Image or Video)",
+                        file_types=["image", "video"],
+                        type="filepath"
+                    )
+
+                    # Frame selector (for videos)
+                    frame_number = gr.Slider(
+                        minimum=0,
+                        maximum=1000,
+                        value=0,
+                        step=1,
+                        label="Frame Number (for videos)",
+                        info="Select which frame to process from video"
+                    )
+
+                    # Source face
+                    source_img = gr.Image(
+                        label="Source Face (for swapping)",
+                        type="numpy"
+                    )
+
+                    process_btn = gr.Button("🚀 Process", variant="primary", size="lg")
 
                 with gr.Column(scale=1):
                     # OUTPUT SECTION
                     gr.Markdown("### 📥 Output")
-                    output_img = gr.Image(label="Result", type="numpy")
+
+                    # Preview of selected frame/image
+                    preview_img = gr.Image(label="Selected Frame", type="numpy")
+
+                    # Processed result
+                    output_img = gr.Image(label="Processed Result", type="numpy")
+
                     status_text = gr.Textbox(label="Processing Log", lines=10, max_lines=20)
 
             # PARAMETERS TABS
@@ -506,7 +586,7 @@ class VisoMasterGradioFull:
             process_btn.click(
                 fn=self.process_image,
                 inputs=[
-                    target_img, source_img,
+                    target_media, frame_number, source_img,
                     # Swap
                     swap_enabled, swap_model, swap_resolution, similarity_threshold, swap_strength, face_likeness,
                     # Edit
@@ -519,7 +599,7 @@ class VisoMasterGradioFull:
                     # Detection
                     detector_model, detector_score, max_faces
                 ],
-                outputs=[output_img, status_text]
+                outputs=[preview_img, output_img, status_text]
             )
 
         return interface
