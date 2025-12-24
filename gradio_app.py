@@ -33,6 +33,38 @@ class MockSignal:
     def connect(self, *args, **kwargs):
         pass
 
+class MockDialog:
+    """Mock dialog for model loading"""
+    def show(self):
+        pass
+
+    def close(self):
+        pass
+
+class MockMainWindow:
+    """Mock MainWindow with required attributes for ModelsProcessor"""
+    def __init__(self):
+        # Qt signals
+        self.model_loading_signal = MockSignal()
+        self.model_loaded_signal = MockSignal()
+
+        # Control settings
+        self.control = {
+            'MaxDFMModelsSlider': 3,
+            'ExecutionProviderSelection': 'CUDA',
+        }
+
+        # DFM models data
+        from app.helpers.miscellaneous import DFM_MODELS_DATA
+        self.dfm_models_data = DFM_MODELS_DATA
+
+        # Model load dialog
+        self.model_load_dialog = MockDialog()
+
+        # UNet settings
+        self.fixed_unet_model_name = "RefLDM_UNET_EXTERNAL_KV"
+        self.current_kv_tensors_map = None
+
 # Mock PySide6 before importing app modules
 sys.modules['PySide6'] = type(sys)('PySide6')
 sys.modules['PySide6.QtCore'] = type(sys)('PySide6.QtCore')
@@ -61,8 +93,11 @@ class VisoMasterGradio:
     def __init__(self):
         print("Initializing VisoMaster Gradio...")
 
-        # Initialize models processor (parent=None for no Qt)
-        self.models_processor = ModelsProcessor(parent=None)
+        # Create mock main window for ModelsProcessor
+        self.mock_main_window = MockMainWindow()
+
+        # Initialize models processor with mock main window
+        self.models_processor = ModelsProcessor(self.mock_main_window)
 
         # Initialize processor helpers
         self.face_detectors = FaceDetectors(self.models_processor)
