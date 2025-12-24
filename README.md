@@ -11,7 +11,7 @@ This fork now includes a **Gradio-based web interface** for cloud GPU deployment
 **Quick Start:**
 ```bash
 pip install -r requirements.txt
-python app.py
+python gradio_app.py
 ```
 
 📖 See [README_GRADIO.md](README_GRADIO.md) for full web interface documentation.

@@ -8,7 +8,7 @@ This document describes the conversion of VisoMaster from a desktop Qt/PySide6 a
 
 ### Completed
 - ✅ Analyzed existing codebase structure
-- ✅ Created Gradio web interface framework (`app.py`)
+- ✅ Created Gradio web interface framework (`gradio_app.py`)
 - ✅ Created web-friendly `requirements.txt`
 - ✅ Qt dependency mocking system for headless operation
 - ✅ Models processor integration structure
@@ -37,7 +37,7 @@ main.py
 
 ### Web Conversion
 ```
-app.py
+gradio_app.py
   └─> Gradio Interface
       ├─> MockQt (bypass Qt dependencies)
       ├─> ModelsProcessor (reused, Qt-mocked)
@@ -48,7 +48,7 @@ app.py
 ## Files Created/Modified
 
 ### New Files
-- **`app.py`** - Main Gradio web interface
+- **`gradio_app.py`** - Main Gradio web interface
 - **`requirements.txt`** - Web deployment dependencies (no Qt/Desktop deps)
 - **`gradio_processor.py`** - Simplified processor wrapper (WIP)
 - **`README_GRADIO.md`** - This file
@@ -91,7 +91,7 @@ pip install torch torchvision torchaudio
 ### Launch the Web Interface
 
 ```bash
-python app.py
+python gradio_app.py
 ```
 
 The interface will be available at:
@@ -100,7 +100,7 @@ The interface will be available at:
 
 ### For Public Access (RunPod, etc.)
 
-Edit `app.py` and change:
+Edit `gradio_app.py` and change:
 ```python
 interface.launch(
     server_name="0.0.0.0",
