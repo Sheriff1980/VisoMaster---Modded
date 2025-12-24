@@ -408,12 +408,12 @@ def main():
     # Create and launch interface
     interface = app.create_interface()
 
-    # Launch with public sharing disabled by default
-    # Set share=True to create a public link
+    # Launch with public sharing enabled for cloud GPU deployment
+    # This creates a public gradio.live link (no port configuration needed)
     interface.launch(
         server_name="0.0.0.0",  # Listen on all interfaces
         server_port=7860,
-        share=False,  # Set to True for public link
+        share=True,  # Creates public gradio.live link
         inbrowser=False,  # Don't auto-open browser
     )
 
